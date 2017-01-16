@@ -18,7 +18,7 @@
 
 <assembly>
     <id>broker</id>
-    <baseDirectory>alibaba-rocketmq</baseDirectory>
+    <baseDirectory>apache-rocketmq</baseDirectory>
     <formats>
         <format>dir</format>
         <format>tar.gz</format>
@@ -27,7 +27,7 @@
         <fileSet>
             <includes>
                 <include>bin/*</include>
-                <include>conf/*</include>
+                <include>conf/**</include>
                 <include>benchmark/*</include>
                 <include>LICENSE</include>
                 <include>NOTICE</include>
