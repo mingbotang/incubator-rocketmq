@@ -18,11 +18,10 @@ package org.apache.rocketmq.common;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -43,10 +42,14 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.rocketmq.common.annotation.ImportantField;
+import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MixAll {
+    private static final Logger log = LoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
+
     public static final String ROCKETMQ_HOME_ENV = "ROCKETMQ_HOME";
     public static final String ROCKETMQ_HOME_PROPERTY = "rocketmq.home.dir";
     public static final String NAMESRV_ADDR_ENV = "NAMESRV_ADDR";
@@ -55,8 +58,8 @@ public class MixAll {
     public static final String DEFAULT_NAMESRV_ADDR_LOOKUP = "jmenv.tbsite.net";
     public static final String WS_DOMAIN_NAME = System.getProperty("rocketmq.namesrv.domain", DEFAULT_NAMESRV_ADDR_LOOKUP);
     public static final String WS_DOMAIN_SUBGROUP = System.getProperty("rocketmq.namesrv.domain.subgroup", "nsaddr");
-    // http://jmenv.tbsite.net:8080/rocketmq/nsaddr
-    public static final String WS_ADDR = "http://" + WS_DOMAIN_NAME + ":8080/rocketmq/" + WS_DOMAIN_SUBGROUP;
+//    // http://jmenv.tbsite.net:8080/rocketmq/nsaddr
+//    public static final String WS_ADDR = "http://" + WS_DOMAIN_NAME + ":8080/rocketmq/" + WS_DOMAIN_SUBGROUP;
     public static final String DEFAULT_TOPIC = "TBW102";
     public static final String BENCHMARK_TOPIC = "BenchmarkTest";
     public static final String DEFAULT_PRODUCER_GROUP = "DEFAULT_PRODUCER";
@@ -88,6 +91,16 @@ public class MixAll {
     public static final String UNIQUE_MSG_QUERY_FLAG = "_UNIQUE_KEY_QUERY";
     public static final String DEFAULT_TRACE_REGION_ID = "DefaultRegion";
     public static final String CONSUME_CONTEXT_TYPE = "ConsumeContextType";
+
+    public static String getWSAddr() {
+        String wsDomainName = System.getProperty("rocketmq.namesrv.domain", DEFAULT_NAMESRV_ADDR_LOOKUP);
+        String wsDomainSubgroup = System.getProperty("rocketmq.namesrv.domain.subgroup", "nsaddr");
+        String wsAddr = "http://" + wsDomainName + ":8080/rocketmq/" + wsDomainSubgroup;
+        if (wsDomainName.indexOf(":") > 0) {
+            wsAddr = "http://" + wsDomainName + "/rocketmq/" + wsDomainSubgroup;
+        }
+        return wsAddr;
+    }
 
     public static String getRetryTopic(final String consumerGroup) {
         return RETRY_GROUP_TOPIC_PREFIX + consumerGroup;
@@ -177,30 +190,24 @@ public class MixAll {
         }
     }
 
-    public static String file2String(final String fileName) {
+    public static String file2String(final String fileName) throws IOException {
         File file = new File(fileName);
         return file2String(file);
     }
 
-    public static String file2String(final File file) {
+    public static String file2String(final File file) throws IOException {
         if (file.exists()) {
-            char[] data = new char[(int) file.length()];
-            boolean result = false;
+            byte[] data = new byte[(int) file.length()];
+            boolean result;
 
-            FileReader fileReader = null;
+            FileInputStream inputStream = null;
             try {
-                fileReader = new FileReader(file);
-                int len = fileReader.read(data);
+                inputStream = new FileInputStream(file);
+                int len = inputStream.read(data);
                 result = len == data.length;
-            } catch (IOException e) {
-                // e.printStackTrace();
             } finally {
-                if (fileReader != null) {
-                    try {
-                        fileReader.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
+                if (inputStream != null) {
+                    inputStream.close();
                 }
             }
 
@@ -239,11 +246,11 @@ public class MixAll {
         return url.getPath();
     }
 
-    public static void printObjectProperties(final Logger log, final Object object) {
-        printObjectProperties(log, object, false);
+    public static void printObjectProperties(final Logger logger, final Object object) {
+        printObjectProperties(logger, object, false);
     }
 
-    public static void printObjectProperties(final Logger log, final Object object, final boolean onlyImportantField) {
+    public static void printObjectProperties(final Logger logger, final Object object, final boolean onlyImportantField) {
         Field[] fields = object.getClass().getDeclaredFields();
         for (Field field : fields) {
             if (!Modifier.isStatic(field.getModifiers())) {
@@ -256,8 +263,8 @@ public class MixAll {
                         if (null == value) {
                             value = "";
                         }
-                    } catch (IllegalArgumentException | IllegalAccessException e) {
-                        e.printStackTrace();
+                    } catch (IllegalAccessException e) {
+                        log.error("Failed to obtain object properties", e);
                     }
 
                     if (onlyImportantField) {
@@ -267,8 +274,9 @@ public class MixAll {
                         }
                     }
 
-                    if (log != null) {
-                        log.info(name + "=" + value);
+                    if (logger != null) {
+                        logger.info(name + "=" + value);
+                    } else {
                     }
                 }
             }
@@ -290,11 +298,8 @@ public class MixAll {
         try {
             InputStream in = new ByteArrayInputStream(str.getBytes(DEFAULT_CHARSET));
             properties.load(in);
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-            return null;
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            log.error("Failed to handle properties", e);
             return null;
         }
 
@@ -313,8 +318,8 @@ public class MixAll {
                     try {
                         field.setAccessible(true);
                         value = field.get(object);
-                    } catch (IllegalArgumentException | IllegalAccessException e) {
-                        e.printStackTrace();
+                    } catch (IllegalAccessException e) {
+                        log.error("Failed to handle properties", e);
                     }
 
                     if (value != null) {
